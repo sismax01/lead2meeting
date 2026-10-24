@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Lead2Meeting — Engineered by SISMAX -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lead2Meeting — B2B Lead-to-Meeting Conversion & Revenue Recovery</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-brand">
+      <div class="brand-logo">L2M</div>
+      <div>
+        <h1>Lead2Meeting</h1>
+        <p class="subtitle">B2B Inquiry-to-Booked-Meeting Conversion &amp; Revenue Recovery</p>
+      </div>
+    </div>
+
+    <div class="topbar-controls">
+      <div id="integrationModeBanner" class="mode-badge mode-simulated" title="Clearly distinguishes local sandbox simulation from live external network calls">
+        <span class="dot"></span>
+        <span id="integrationModeText">Mode: SIMULATED SANDBOX</span>
+      </div>
+      <button id="btnScanStalls" class="btn btn-secondary" title="Scan active leads against SLA response & confirmation windows">
+        Run SLA Watchdog Scan
+      </button>
+      <button id="btnOpenCaptureModal" class="btn btn-primary">
+        + Capture New Lead
+      </button>
+      <button id="btnResetDemo" class="btn btn-ghost" title="Reset database to default sample dataset">
+        Reset Sample Data
+      </button>
+    </div>
+  </header>
+
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <main class="container">
+    <!-- Top Executive & Operational KPIs -->
+    <section class="kpi-grid" id="kpiGrid">
+      <div class="kpi-card">
+        <div class="kpi-label">Lead-to-Booked Rate</div>
+        <div class="kpi-value" id="kpiConversionRate">—</div>
+        <div class="kpi-meta" id="kpiConversionMeta">Loading funnel metrics...</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Median First Response</div>
+        <div class="kpi-value" id="kpiMedianResponse">—</div>
+        <div class="kpi-meta" id="kpiSlaCompliance">SLA target: 240m</div>
+      </div>
+      <div class="kpi-card kpi-warning">
+        <div class="kpi-label">At-Risk / Stalled Pipeline</div>
+        <div class="kpi-value" id="kpiAtRiskRevenue">—</div>
+        <div class="kpi-meta" id="kpiAtRiskMeta">Stalled or failed ops</div>
+      </div>
+      <div class="kpi-card kpi-success">
+        <div class="kpi-label">Recovered Pipeline</div>
+        <div class="kpi-value" id="kpiRecoveredRevenue">—</div>
+        <div class="kpi-meta" id="kpiRecoveredMeta">Rescued via retry/outreach</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Booked Meeting Pipeline</div>
+        <div class="kpi-value" id="kpiBookedRevenue">—</div>
+        <div class="kpi-meta" id="kpiDuplicatesMeta">Duplicates merged: 0</div>
+      </div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <nav class="tabs-nav" role="tablist">
+      <button class="tab-btn active" data-tab="pipelineTab" role="tab">
+        Lead Lifecycle Pipeline <span class="badge-count" id="tabLeadCount">0</span>
+      </button>
+      <button class="tab-btn" data-tab="recoveryTab" role="tab">
+        Recovery &amp; Failed Ops Queue <span class="badge-count badge-alert" id="tabRecoveryCount">0</span>
+      </button>
+      <button class="tab-btn" data-tab="analyticsTab" role="tab">
+        Conversion, Rep Capacity &amp; Audit Stream
+      </button>
+    </nav>
+
+    <!-- TAB 1: Lead Pipeline & Inspector -->
+    <section id="pipelineTab" class="tab-panel active">
+      <div class="workspace-split">
+        <div class="panel-list">
+          <div class="filter-bar">
+            <input type="search" id="searchLeadsInput" placeholder="Search name, company, email..." class="input-control" />
+            <select id="filterStageSelect" class="input-control">
+              <option value="">All Lifecycle Stages</option>
+              <option value="new">New</option>
+              <option value="qualified">Qualified</option>
+              <option value="contacted">Contacted</option>
+              <option value="meeting_scheduled">Meeting Scheduled (Invite Pending)</option>
+              <option value="meeting_booked">Meeting Booked (Confirmed)</option>
+              <option value="completed">Completed</option>
+              <option value="disqualified">Disqualified</option>
+              <option value="lost">Lost</option>
+            </select>
+            <select id="filterHealthSelect" class="input-control">
+              <option value="all">All Health States</option>
+              <option value="stalled">Stalled (SLA Breach)</option>
+              <option value="failed">Failed Integration / Op</option>
+              <option value="recovered">Recovered Opportunities</option>
+            </select>
+          </div>
+
+          <div class="table-wrapper">
+            <table class="data-table" id="leadsTable">
+              <thead>
+                <tr>
+                  <th>Prospect &amp; Company</th>
+                  <th>Service &amp; Budget</th>
+                  <th>Score</th>
+                  <th>Stage</th>
+                  <th>Health &amp; Status</th>
+                  <th>Owner</th>
+                </tr>
+              </thead>
+              <tbody id="leadsTableBody">
+                <tr><td colspan="6" class="empty-cell">Loading leads...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Right-hand Lead Journey Inspector -->
+        <aside class="panel-inspector" id="leadInspector">
+          <div class="inspector-empty" id="inspectorEmptyState">
+            <h3>Select a Lead to Inspect</h3>
+            <p>Click any prospect row on the left to inspect qualification breakdown, schedule or confirm meetings, execute recovery retries, or view the full event audit log.</p>
+          </div>
+          <div id="inspectorContent" class="hidden"></div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- TAB 2: Recovery & Failed Operations Queue -->
+    <section id="recoveryTab" class="tab-panel">
+      <div class="section-header">
+        <div>
+          <h2>Revenue Recovery &amp; Failed Operations Queue</h2>
+          <p class="text-muted">Every stalled prospect, failed calendar slot lock, CRM webhook error, or meeting no-show is tracked with idempotent retries and leadership escalation.</p>
+        </div>
+        <div class="filter-group">
+          <select id="filterRecoveryStatus" class="input-control">
+            <option value="">All Task Statuses</option>
+            <option value="open">Open / Action Needed</option>
+            <option value="retrying">Retrying</option>
+            <option value="escalated">Escalated</option>
+            <option value="resolved">Resolved</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="recoveryTasksList" class="recovery-cards-grid"></div>
+    </section>
+
+    <!-- TAB 3: Analytics, Rep Capacity & Global Event Stream -->
+    <section id="analyticsTab" class="tab-panel">
+      <div class="analytics-grid">
+        <div class="card">
+          <h3>Lifecycle Stage Funnel &amp; Pipeline Value</h3>
+          <div id="funnelContainer" class="funnel-list"></div>
+        </div>
+
+        <div class="card">
+          <h3>Practice Leads &amp; Consultation Rep Capacity</h3>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Rep</th>
+                  <th>Specialty</th>
+                  <th>Active Load</th>
+                  <th>Booked</th>
+                  <th>Stalled</th>
+                  <th>Calendar</th>
+                </tr>
+              </thead>
+              <tbody id="repsTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-lg">
+        <h3>Global System &amp; Integration Event Audit Stream</h3>
+        <p class="text-muted">Every event records whether it executed internally, in the local simulated sandbox, or via a live external network call.</p>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Timestamp (UTC)</th>
+                <th>Lead / Company</th>
+                <th>Event Type</th>
+                <th>Execution Mode</th>
+                <th>Status</th>
+                <th>Summary</th>
+              </tr>
+            </thead>
+            <tbody id="globalEventsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal: Capture New Lead -->
+  <div id="captureModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2>Capture Inbound B2B Lead</h2>
+        <button id="btnCloseCaptureModal" class="btn-close" aria-label="Close">&times;</button>
+      </div>
+      <form id="captureLeadForm">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="leadFullName">Full Name *</label>
+            <input type="text" id="leadFullName" required minlength="2" placeholder="e.g. Claire Vance" class="input-control" />
+          </div>
+          <div class="form-group">
+            <label for="leadEmail">Work Email * (Deduplicated automatically)</label>
+            <input type="email" id="leadEmail" required placeholder="claire@acmesystems.io" class="input-control" />
+          </div>
+          <div class="form-group">
+            <label for="leadCompany">Company Name *</label>
+            <input type="text" id="leadCompany" required minlength="2" placeholder="Acme Systems Inc." class="input-control" />
+          </div>
+          <div class="form-group">
+            <label for="leadPhone">Phone</label>
+            <input type="text" id="leadPhone" placeholder="+1-555-0190" class="input-control" />
+          </div>
+          <div class="form-group">
+            <label for="leadService">Service Interest *</label>
+            <select id="leadService" class="input-control">
+              <option value="cloud_migration">Cloud Migration &amp; Kubernetes</option>
+              <option value="custom_software">Custom Software Engineering</option>
+              <option value="security_audit">Cybersecurity &amp; SOC2 Audit</option>
+              <option value="ai_consulting">AI &amp; Data Architecture</option>
+              <option value="devops_retainer">DevOps Managed Retainer</option>
+              <option value="general_inquiry">General Inquiry</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="leadBudget">Estimated Budget (USD) *</label>
+            <input type="number" id="leadBudget" value="45000" min="0" step="1000" required class="input-control" />
+          </div>
+          <div class="form-group">
+            <label for="leadTimeline">Project Timeline *</label>
+            <select id="leadTimeline" class="input-control">
+              <option value="immediate">Immediate (&lt; 30 days)</option>
+              <option value="1_3_months" selected>1–3 Months</option>
+              <option value="3_6_months">3–6 Months</option>
+              <option value="exploring">Exploring / Researching</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="leadSize">Company Size</label>
+            <select id="leadSize" class="input-control">
+              <option value="1-10">1–10 employees</option>
+              <option value="11-50">11–50 employees</option>
+              <option value="51-200" selected>51–200 employees</option>
+              <option value="201-1000">201–1000 employees</option>
+              <option value="1000+">1000+ employees</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group mt-sm">
+          <label for="leadNotes">Inquiry Scope &amp; Context</label>
+          <textarea id="leadNotes" rows="2" placeholder="Describe project goals, technical stack, or urgency..." class="input-control"></textarea>
+        </div>
+        <div class="form-check-row mt-sm">
+          <label class="checkbox-label">
+            <input type="checkbox" id="leadSimCrmFail" />
+            <span><strong>Simulate CRM Webhook HTTP 503 Failure</strong> (Tests automatic failure detection &amp; recovery queue creation)</span>
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="btnCancelCapture" class="btn btn-ghost">Cancel</button>
+          <button type="submit" class="btn btn-primary">Capture, Qualify &amp; Route Lead</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
